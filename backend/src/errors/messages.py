@@ -19,7 +19,7 @@ DEF_INTERNAL_SERVER_ERROR = e.g("Sorry, the server ran into a problem.")
 DRINK_UNUSABLE_TITLE = e.g("This title '%s' is already in use.")
 DRINK_INVALID_RECIPE_JSON_ARRAY = e.g("The recipe must be a JSON Array of ingredient objects.")
 DRINK_INVALID_RECIPE_INGREDIENT_OBJECTS = e.g("Some ingredient objects have problems "
-                                              "can be fixed by looking at 'debug' or 'additional_error'.")
+                                              "can be fixed by looking at 'debug' array.")
 DRINK_INVALID_RECIPE_INGREDIENT_OBJECT = e.g("The ingredient of indices [%s] must be JSON objects.")
 DRINK_INVALID_JSON_DATA = e.g("The JSON data is malformed. %s.")
 DRINK_NOT_FOUND = e.g("The drink was not found.")
