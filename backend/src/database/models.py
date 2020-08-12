@@ -1,7 +1,11 @@
 import os
 from sqlalchemy import Column, String, Integer
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from flask_sqlalchemy import SQLAlchemy
+from flask import abort
 import json
+
+from ..errors.messages import DEF_UNPROCESSABLE
 
 database_filename = "database.db"
 project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,45 +13,110 @@ database_path = "sqlite:///{}".format(os.path.join(project_dir, database_filenam
 
 db = SQLAlchemy()
 
-'''
-setup_db(app)
-    binds a flask application and a SQLAlchemy service
-'''
+
+class DBActionsExceptionsHandler:
+
+    def __init__(self, session):
+        self.session = session
+
+    def fetch(self, origin):
+
+        def wrapper(cls, **kwargs):
+            try:
+                data = origin(cls, **kwargs)
+                return data
+
+            except SQLAlchemyError:
+                self.session.close()
+                abort(500, DEF_UNPROCESSABLE)
+
+        return wrapper
+
+    def change(self, origin):
+
+        def wrapper(cls, **kwargs):
+
+            try:
+                origin(cls, **kwargs)
+                self.session.commit()
+                return True
+
+            except SQLAlchemyError:
+                self.session.rollback()
+                self.session.close()
+                abort(500, DEF_UNPROCESSABLE)
+
+        return wrapper
+
+
+class DBActions:
+    exception_handler = DBActionsExceptionsHandler(db.session)
+
+    session = exception_handler.session
+
+    @classmethod
+    @exception_handler.fetch
+    def get_one(cls, id):
+        return cls.session.query(cls).filter(cls.id == id).first()
+
+    @classmethod
+    @exception_handler.fetch
+    def get_all(cls, loadonly=None):
+        if loadonly:
+            return cls.query.options(loadonly).all()
+
+        return cls.session.query(cls).all()
+
+    @classmethod
+    @exception_handler.fetch
+    def get_filtered(cls, filter=True):
+        return cls.query.filter(filter).first()
+
+    @exception_handler.change
+    def add(self, **kwargs):
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        self.session.add(self)
+
+    @exception_handler.change
+    def remove(self):
+        self.session.delete(self)
+
+
 def setup_db(app):
+    """Binds a flask application and a SQLAlchemy service"""
+
     app.config["SQLALCHEMY_DATABASE_URI"] = database_path
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.app = app
     db.init_app(app)
 
-'''
-db_drop_and_create_all()
-    drops the database tables and starts fresh
-    can be used to initialize a clean database
-    !!NOTE you can change the database_filename variable to have multiple verisons of a database
-'''
+
 def db_drop_and_create_all():
+    """Drops the database tables and starts fresh,
+    and can be used to initialize a clean database."""
+
     db.drop_all()
     db.create_all()
 
-'''
-Drink
-a persistent drink entity, extends the base SQLAlchemy Model
-'''
-class Drink(db.Model):
-    # Autoincrementing, unique primary key
+
+class Drink(db.Model, DBActions):
+    """A persistent drink entity, extends the base SQLAlchemy Model."""
+
+    # Autoincrement, unique primary key
     id = Column(Integer().with_variant(Integer, "sqlite"), primary_key=True)
+
     # String Title
     title = Column(String(80), unique=True)
+
     # the ingredients blob - this stores a lazy json blob
     # the required datatype is [{'color': string, 'name':string, 'parts':number}]
-    recipe =  Column(String(180), nullable=False)
+    recipe = Column(String(180), nullable=False)
 
-    '''
-    short()
-        short form representation of the Drink model
-    '''
     def short(self):
-        print(json.loads(self.recipe))
+        """Short form representation of the Drink model."""
         short_recipe = [{'color': r['color'], 'parts': r['parts']} for r in json.loads(self.recipe)]
         return {
             'id': self.id,
@@ -55,53 +124,14 @@ class Drink(db.Model):
             'recipe': short_recipe
         }
 
-    '''
-    long()
-        long form representation of the Drink model
-    '''
     def long(self):
+        """Long form representation of the Drink model."""
+
         return {
             'id': self.id,
             'title': self.title,
             'recipe': json.loads(self.recipe)
         }
-
-    '''
-    insert()
-        inserts a new model into a database
-        the model must have a unique name
-        the model must have a unique id or null id
-        EXAMPLE
-            drink = Drink(title=req_title, recipe=req_recipe)
-            drink.insert()
-    '''
-    def insert(self):
-        db.session.add(self)
-        db.session.commit()
-
-    '''
-    delete()
-        deletes a new model into a database
-        the model must exist in the database
-        EXAMPLE
-            drink = Drink(title=req_title, recipe=req_recipe)
-            drink.delete()
-    '''
-    def delete(self):
-        db.session.delete(self)
-        db.session.commit()
-
-    '''
-    update()
-        updates a new model into a database
-        the model must exist in the database
-        EXAMPLE
-            drink = Drink.query.filter(Drink.id == id).one_or_none()
-            drink.title = 'Black Coffee'
-            drink.update()
-    '''
-    def update(self):
-        db.session.commit()
 
     def __repr__(self):
         return json.dumps(self.short())
