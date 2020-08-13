@@ -37,7 +37,7 @@ From within the `../backend` directory first ensure you are working using your c
 Each time you open a new terminal session, run:
 
 ```bash
-export FLASK_APP=src.api:create_app();
+export FLASK_APP="src.api:create_app()";
 ```
 
 To run the server, execute:
